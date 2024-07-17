@@ -493,8 +493,10 @@ class ZappaCLI:
             return
 
         # Make sure there isn't a new version available
-        if not self.vargs.get("json"):
-            self.check_for_update()
+        # Disable in Linaro fork because it always says there is a new
+        # version, but there isn't really.
+        # if not self.vargs.get("json"):
+        #     self.check_for_update()
 
         # Load and Validate Settings File
         self.load_settings_file(self.vargs.get("settings_file"))
