@@ -499,14 +499,20 @@ class LambdaHandler:
 
         # This is an API Gateway authorizer event
         elif event.get("type") in ("TOKEN", "REQUEST"):
-            whole_function = self.settings.AUTHORIZER_FUNCTION
-            if whole_function:
-                app_function = self.import_module_and_get_function(whole_function)
-                policy = self.run_function(app_function, event, context)
-                return policy
-            else:
-                logger.error("Cannot find a function to process the authorization request.")
-                raise Exception("Unauthorized")
+            try:
+                whole_function = self.settings.AUTHORIZER_FUNCTION
+                if whole_function:
+                    app_function = self.import_module_and_get_function(whole_function)
+                    policy = self.run_function(app_function, event, context)
+                    return policy
+                else:
+                    logger.error("Cannot find a function to process the authorization request.")
+                    raise Exception("Unauthorized")
+            except AuthorizerError as e:
+                # This is how you return a custom message for a 401 Unauthorized response.
+                # The message will be available in $context.authorizer.message
+                logger.info(f"AuthorizerError: {e.message}")
+                return {"message": e.message}
 
         # This is an AWS Cognito Trigger Event
         elif event.get("triggerSource", None):
