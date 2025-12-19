@@ -33,6 +33,20 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+class AuthorizerError(Exception):
+    """
+    A special exception that can be raised from a custom authorizer to return a
+    specific status code and message.
+    """
+    def __init__(self, message="Unauthorized", status_code=401):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
+
+    def to_dict(self):
+        return {
+            "error": self.message
+        }
 
 class LambdaHandler:
     """
@@ -627,13 +641,12 @@ class LambdaHandler:
                 content["body"] = json.dumps(str(body), sort_keys=True, indent=4)
                 return content
 
-        # Normal web app flow
-        try:
-            # Timing
-            time_start = datetime.datetime.now()
+        # This is a normal HTTP request, which can be handled by the WSGI app.
+        if event.get("httpMethod", None):
+            try:
+                # Timing
+                time_start = datetime.datetime.now()
 
-            # This is a normal HTTP request
-            if event.get("httpMethod", None):
                 script_name = ""
                 is_elb_context = False
                 headers = merge_headers(event)
@@ -732,39 +745,39 @@ class LambdaHandler:
                     common_log(environ, response, response_time=response_time_us)
 
                     return zappa_returndict
-        except Exception as e:  # pragma: no cover
-            # Print statements are visible in the logs either way
-            print(e)
-            exc_info = sys.exc_info()
-            message = (
-                "An uncaught exception happened while servicing this request. "
-                "You can investigate this with the `zappa tail` command."
-            )
+            except Exception as e:  # pragma: no cover
+                # Print statements are visible in the logs either way
+                print(e)
+                exc_info = sys.exc_info()
+                message = (
+                    "An uncaught exception happened while servicing this request. "
+                    "You can investigate this with the `zappa tail` command."
+                )
 
-            # If we didn't even build an app_module, just raise.
-            if not settings.DJANGO_SETTINGS:
-                try:
-                    self.app_module
-                except NameError as ne:
-                    message = "Failed to import module: {}".format(ne.message)
+                # If we didn't even build an app_module, just raise.
+                if not settings.DJANGO_SETTINGS:
+                    try:
+                        self.app_module
+                    except NameError as ne:
+                        message = "Failed to import module: {}".format(ne.message)
 
-            # Call exception handler for unhandled exceptions
-            exception_handler = self.settings.EXCEPTION_HANDLER
-            self._process_exception(
-                exception_handler=exception_handler,
-                event=event,
-                context=context,
-                exception=e,
-            )
+                # Call exception handler for unhandled exceptions
+                exception_handler = self.settings.EXCEPTION_HANDLER
+                self._process_exception(
+                    exception_handler=exception_handler,
+                    event=event,
+                    context=context,
+                    exception=e,
+                )
 
-            # Return this unspecified exception as a 500, using template that API Gateway expects.
-            content = collections.OrderedDict()
-            content["statusCode"] = 500
-            body = {"message": message}
-            if settings.DEBUG:  # only include traceback if debug is on.
-                body["traceback"] = traceback.format_exception(*exc_info)  # traceback as a list for readability.
-            content["body"] = json.dumps(str(body), sort_keys=True, indent=4)
-            return content
+                # Return this unspecified exception as a 500, using template that API Gateway expects.
+                content = collections.OrderedDict()
+                content["statusCode"] = 500
+                body = {"message": message}
+                if settings.DEBUG:  # only include traceback if debug is on.
+                    body["traceback"] = traceback.format_exception(*exc_info)  # traceback as a list for readability.
+                content["body"] = json.dumps(str(body), sort_keys=True, indent=4)
+                return content
 
 
 def lambda_handler(event, context):  # pragma: no cover
